@@ -1,4 +1,10 @@
-def healpix_phot(inputlist, maplist, radius, galactic=True, decimal=True, rinner=2.0, router=3.0):
+import numpy as np
+import healpy as hp
+from haperflux import haperflux
+
+### 'radius', 'rinner', and 'router' should be given in arcminutes
+
+def healpix_phot(inputlist, maplist, radius, rinner, router, galactic=True, decimal=True):
     ##Here is the "observation data structure", which just means "a bunch of details 
     ## about the different all-sky data sources which could be used here.
     freqlist =     ['30','44','70','100','143','217','353','545','857','1874','2141','2998','3331','4612','4997','11992','16655','24983','33310']
@@ -10,8 +16,8 @@ def healpix_phot(inputlist, maplist, radius, galactic=True, decimal=True, rinner
     
 
     k0 = 1.0 
-    k1 = rinner 
-    k2 = router 
+    k1 = rinner/radius 
+    k2 = router/radius 
     apcor = ((1 - (0.5)**(4*k0**2))-((0.5)**(4*k1**2) - (0.5)**(4*k2**2)))**(-1)
   
     # 'galactic' overrules 'decimal' 
@@ -51,7 +57,7 @@ def healpix_phot(inputlist, maplist, radius, galactic=True, decimal=True, rinner
     
     # Start the actual processing: Read-in the maps.
     for ct2 in range(0,nmaps):
-        xtmp_data, xtmp_head = hp.read_map(fn[ct2], memmap=True, h=True, verbose=False)
+        xtmp_data, xtmp_head = hp.read_map(fn[ct2], memmap=True, h=True, verbose=False, nest=False)
         freq = dict(xtmp_head)['FREQ']
         units = dict(xtmp_head)['TUNIT1']
         freq_str = str(freq)
