@@ -152,7 +152,7 @@ def planckcorr(freq):
     h = 6.62606957E-34
     k = 1.3806488E-23 
     T = 2.725
-    x = h*(freq*1E9)/k/T
+    x = h*(freq*1e9)/k/T
     return (exp(x) - 1)**2/x**2/exp(x) 
 
 ### In the next pass, let's use the astropy system for coordinate conversion
@@ -162,7 +162,7 @@ def planckcorr(freq):
 
 
 def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_radius1, aper_outer_radius2, \
-              units, fd=0, fd_err=0, fd_bg=0, column=0, dopol=False, nested=True, noise_model=0, centroid=0):
+              units, fd=0, fd_err=0, fd_bg=0, column=0, dopol=False, nested=False, noise_model=0, centroid=False, arcmin=True):
 
 
     
@@ -178,12 +178,20 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
 
     #set parameters
     inmap = inmap
-    thisfreq = float(freq)
-    lon = float(lon)
-    lat = float(lat)
-    aper_inner_radius  = float(aper_inner_radius)
-    aper_outer_radius1 = float(aper_outer_radius1)
-    aper_outer_radius2 = float(aper_outer_radius2)
+    thisfreq = float(freq) # [GHz]
+    lon = float(lon) # [deg]
+    lat = float(lat) # [deg]
+    aper_inner_radius  = float(aper_inner_radius)  # [arcmin]
+    aper_outer_radius1 = float(aper_outer_radius1) # [arcmin]
+    aper_outer_radius2 = float(aper_outer_radius2) # [arcmin]
+    
+    # Convert the apertures to radians, if given in arcminutes. 
+    #     The pixel-finder 'query_disc' expects radians:
+    if arcmin== True:
+        
+        aper_inner_radius  = aper_inner_radius/60.*np.pi/180.  # [rad]
+        aper_outer_radius1 = aper_outer_radius1/60.*np.pi/180. # [rad]
+        aper_outer_radius2 = aper_outer_radius2/60.*np.pi/180. # [rad]
 
     # read in data
     s = np.size(inmap)
@@ -192,7 +200,7 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
         print "Filename given as input..."
         print "Reading HEALPix fits file into a numpy array"
         
-        hmap,hhead = hp.read_map(inmap, hdu=1,h=True, nest=nested, memmap=False) #Check if Ring or Nested is needed
+        hmap,hhead = hp.read_map(inmap, hdu=1,h=True, nest=nested, memmap=True) #Check if Ring or Nested is needed
         #http://healpy.readthedocs.org/en/latest/generated/healpy.fitsfunc.read_map.html
         #print np.size(hmap)
     
@@ -251,11 +259,11 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
     
 
     # get pixels in aperture
-    phi = lon*np.pi/180.
+    phi   = lon*np.pi/180.
     theta = np.pi/2.-lat*np.pi/180.
-    vec0=hp.ang2vec(theta, phi)
+    vec0  = hp.ang2vec(theta, phi)
         
-        # According to the HP git repository- hp.query_disc is faster in RING
+    # According to the HP git repository- hp.query_disc is faster in RING
      
     #rint "Getting the innermost (source) pixel numbers"
     ## Get the pixels within the innermost (source) aperture
