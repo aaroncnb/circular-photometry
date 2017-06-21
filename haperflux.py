@@ -1,18 +1,4 @@
 
-#
-#
-
-#
-#  OUTPUTS
-#
-#  fd                  Integrated flux density in aperture after b/g
-#                      subtraction (Jy)
-#
-#  fd_err              Estimate of error on integrated flux density (Jy)
-#
-#
-#  fd_bg               Background flux density estimate (Jy)
-
 
 """
 =====================================================
