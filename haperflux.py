@@ -98,10 +98,19 @@
 #  10-Nov-2011  M. Peel        Adding AVG unit option.
 #  20-Sep-2012  P. McGehee     Ingested into IPAC SVN, formatting changes
 #  11-Apr-2016  A. Bell        Translated to Python
-# ------------------------------------------------------------
-#
+# ----------------------------------------------------------
 
-# In[ ]:
+"""
+=====================================================
+haperflux.py : Circular aperture photmetry
+=====================================================
+
+This module provides circular aperture photometry
+functionality for Healpix maps.
+
+- :func:'convertToJy' convert units to Janskys
+- :func:'planckcorr' conversion factor between CMB_K and Jy
+"""
 
 import matplotlib
 import numpy as np
@@ -115,49 +124,18 @@ from astropy.stats import mad_std
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 
-
-
-
-#http://stackoverflow.com/questions/14275986/removing-common-elements-in-two-lists
-# Here is a function to remove the "common" pixels of the innter and outer rings of the background annulus
-# The point is that the background-ring pixels we want, are the ones that /not/ contained by both outer rings.
-# If we were calculating the rings's area, we'd subtract the innter ring area from the outer. It's essentially the same logic here
-# I found an example function on stackoverflow, by "user1632861 "
-# It's intended for lists, rather than numpy arrays, but I think it should work
-
-def removeCommonElements(outerpix1, outerpix2):
-    for pix in outerpix2[:]:
-        if pix in outerpix1:
-            outerpix2.remove(pix)
-            outerpix1.remove(pix)
-
-def removeCommonElementsNumpy(outerpix1, outerpix2):
-    outpix1 = outerpix1.copy()
-    outpix2 = outerpix2.copy()
-    for pix in outerpix2[:]:
-        if pix in outerpix1:
-            np.delete(outpix1,pix)
-            np.delete(outpix2,pix)
-    return outpix1, outpix2
-
-def deleteCommon(outerpix1,outerpix2):
-    outerpix = np.delete(outerpix2, outerpix1)
-    return outerpix
-
-
 def planckcorr(freq):
     h = 6.62606957E-34
     k = 1.3806488E-23
     T = 2.725
     x = h*(freq*1e9)/k/T
-    return (exp(x) - 1)**2/x**2/exp(x)
+    return (np.exp(x) - 1)**2/x**2/np.exp(x)
 
 
 def convertToJy(units, thisfreq, npix=None, pix_area = None):
 
     # get conversion factors for an aperture to Jy/pix, from any of the following units:
     # Kelvin(RJ), Kelvin(CMB), MJy/sr, Average
-    #print "Getting the appropriate conversion factors..."
 
     if pix_area != None and npix != None:
         print "Only one of npix or pix_area should be specified! Proceeding with npix."
@@ -199,9 +177,70 @@ def convertToJy(units, thisfreq, npix=None, pix_area = None):
 
         return factor
 
-### In the next pass, let's use the astropy system for coordinate conversion
-### The IDL EULER routine is the last remaining bit of Python wrapped IDL code here
-### This is a good guide for the astropy implementation:   http://docs.astropy.org/en/stable/coordinates/
+def healpix_phot(inputlist, maplist, radius, rinner, router, galactic=True, decimal=True):
+    ##Here is the "observation data structure", which just means "a bunch of details
+    ## about the different all-sky data sources which could be used here.
+    freqlist =     ['30','44','70','100','143','217','353','545','857','1874','2141','2998','3331','4612','4997','11992','16655','24983','33310']
+    freqval =      [28.405889, 44.072241,70.421396,100.,143.,217.,353.,545.,857.,1874.,2141.,2998.,3331.,4612.,4997.,11992.,16655.,24983.,33310.]
+    fwhmlist =     [33.1587,28.0852,13.0812,9.88,7.18,4.87,4.65,4.72,4.39,0.86,0.86,4.3,0.86,0.86,4,3.8,0.86,3.8,0.86] # fwhm in arcminutes
+    band_names =   ["akari9", "iras12", "akari18","iras25","iras60","akari65","akari90","iras100","akari140","akari160","planck857", "planck545"]
+
+    k0 = 1.0
+    k1 = rinner/radius
+    k2 = router/radius
+    apcor = ((1 - (0.5)**(4*k0**2))-((0.5)**(4*k1**2) - (0.5)**(4*k2**2)))**(-1)
+
+    # 'galactic' overrules 'decimal'
+    if (galactic==True):
+        dt=[('sname',np.dtype('S13')),('glon',np.float32),('glat',np.float32)]
+        targets = np.genfromtxt(inputlist, delimiter=",",dtype=dt)
+
+    ns = len(targets['glat'])
+
+    fd3 = -1
+    fd_err3 = -1
+
+    fn = np.genfromtxt(maplist, delimiter=" ", dtype='str')
+    nmaps = len(fn)
+    ## Initialize the arrays which will hold the results
+    fd_all = np.zeros((ns,nmaps))
+    fd_err_all = np.zeros((ns,nmaps))
+    fd_bg_all = np.zeros((ns,nmaps))
+
+    # Start the actual processing: Read-in the maps.
+    for ct2 in range(0,nmaps):
+        xtmp_data, xtmp_head = hp.read_map(fn[ct2], h=True, verbose=False, nest=False)
+        freq = dict(xtmp_head)['FREQ']
+        units = dict(xtmp_head)['TUNIT1']
+        freq_str = str(freq)
+        idx = freqlist.index(str(freq))
+        currfreq = int(freq)
+
+        if (radius == None):
+            radval = fwhmlist[idx]
+        else:
+            radval = radius
+
+
+        for ct in range(0,ns):
+
+            glon = targets['glon'][ct]
+            glat = targets['glat'][ct]
+
+            fd_all[ct,ct2], fd_err_all[ct,ct2], fd_bg_all[ct,ct2] = \
+                haperflux(inmap= xtmp_data, freq= currfreq, lon=glon, lat=glat, \
+                        res_arcmin= radius, aper_inner_radius=radius, aper_outer_radius1=rinner, \
+                        aper_outer_radius2=router,units=units)
+
+            if (np.isfinite(fd_err_all[ct,ct2]) == False):
+                fd_all[ct,ct2] = -1
+                fd_err_all[ct,ct2] = -1
+            else:
+                if radius==None:
+                    fd_all[ct,ct2] = fd_all[ct,ct2]*apcor
+                    fd_err_all[ct,ct2] = fd_err_all[ct,ct2]*apcor
+
+    return fd_all, fd_err_all, fd_bg_all
 
 
 
@@ -213,7 +252,7 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
         print ''
         print 'SYNTAX:-'
         print ''
-        print 'haperflux(inmap, freq, res_arcmin, lon, lat, aper_inner_radius, aper_outer_radius1, aper_outer_radius2, units, fd, fd_err, fd_bg,column=column, noise_model=noise_model, /dopol, /nested)'
+        print 'haperflux(inmap, freq, res_arcmin, lon, lat, aper_inner_radius, aper_outer_radius1, aper_outer_radius2, units, fd, fd_err, fd_bg,column, noise_model, /dopol, /nested)'
         print ''
         exit()
 
@@ -242,14 +281,10 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
         print "Filename given as input..."
         print "Reading HEALPix fits file into a numpy array"
 
-        hmap,hhead = hp.read_map(inmap, hdu=1,h=True, nest=nested, memmap=True) #Check if Ring or Nested is needed
-        #http://healpy.readthedocs.org/en/latest/generated/healpy.fitsfunc.read_map.html
-        #print np.size(hmap)
+        hmap,hhead = hp.read_map(inmap, hdu=1,h=True, nest=nested)
 
     if (s>1):
-        #print "Numpy HEALPix array given as input, proceeding..."
         hmap = inmap
-
 
     if (nested==False):
         ordering='RING'
@@ -267,67 +302,27 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
     npix = 12*nside**2
     ncolumn = len(hmap)
 
-# set column number and test to make sure there is enough columns in
-# the file!
-    if (column == 0):
-        column = 0
-
-    else:
-        column=round(column,1)
-
-    if (((column+1) > ncolumn) and (dopol== 0)):
-        print ''
-        print 'Column number requested larger than the number of columns in the file!'
-        print ''
-        exit()
-
-
-    # check for dopol keyword for calculating polarized intensity
-    if (dopol==0):
-        dopol = 0
-    else:
-        dopol = 1
-        column = 1
-        if (ncolumn < 3):
-            print ''
-            print 'To calculate polarized intensity (PI), requires polarization data with 3 columns or more...'
-            print ''
-            exit()
-
-    #-----do the centroiding here
-
-    if (centroid==True):
-        print 'Doing Re-centroiding of coordinates'
-
-
     # get pixels in aperture
     phi   = lon*np.pi/180.
     theta = np.pi/2.-lat*np.pi/180.
     vec0  = hp.ang2vec(theta, phi)
 
-    # According to the HP git repository- hp.query_disc is faster in RING
-
-    #print "Getting the innermost (source) pixel numbers"
     ## Get the pixels within the innermost (source) aperture
     innerpix = hp.query_disc(nside=nside, vec=vec0, radius=aper_inner_radius, nest=nested)
 
-    #print "Getting the background ring pixel numbers"
-    ## Get the pixels within the inner-ring of the background annulus
+    #Get the background ring pixel numbers"
     outerpix1 = hp.query_disc(nside=nside, vec=vec0, radius=aper_outer_radius1, nest=nested)
-    #nouterpix1 = len(outerpix1)
+
 
     ## Get the pixels within the outer-ring of the background annulus
     outerpix2 = hp.query_disc(nside=nside, vec=vec0, radius=aper_outer_radius2, nest=nested)
-    #nouterpix2 = len(outerpix2)
 
 
-# Identify and remove the bad pixels
-# In this scheme, all of the bad pixels should have been labeled with HP.UNSEEN in the HEALPix maps
 
-    #print "Checking for bad pixels"
+    # Identify and remove the bad pixels
+    # In this scheme, all of the bad pixels should have been labeled with HP.UNSEEN in the HEALPix maps
     bad0 = np.where(hmap[innerpix] == hp.UNSEEN)
-    #print "Printing bad0"
-    #print bad0
+
     innerpix_masked = np.delete(innerpix,bad0)
     ninnerpix = len(innerpix_masked)
 
@@ -338,8 +333,6 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
     bad2 = np.where(hmap[outerpix2] == hp.UNSEEN)
     outerpix2_masked = np.delete(outerpix2,bad2)
     nouterpix2 = len(outerpix2_masked)
-
-    #print str(bad0)+"bad pixels found."
 
     if (ninnerpix == 0) or (nouterpix1 == 0) or (nouterpix2 == 0):
         print ''
@@ -355,92 +348,42 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
 
     # find pixels in the annulus (between outerradius1 and outeradius2)
     # In other words, remove pixels of Outer Radius 2 that are enclosed within Outer Radius 1
-
     bgpix = np.delete(outerpix2, outerpix1)
-    #print "Common Elements Removed"
-    #print str(len(bgpix))+" background pixels used."
-    #print "Printing background pixel list:"
-    #print bgpix
 
     nbgpix = len(bgpix)
 
-
-
     factor = covnertToJy(units, thisfreq, npix)
-# override columns if /dopol keyword is set
-
-    if (dopol == 1):
-        #print "Doing the flux calculations (using polarization data)"
-        ncalc = 2
-
-    else:
-        ncalc = 1
-        #print "Doing the flux calculations (using only T, or intensity/flux data)"
-
-    for i in range(0, ncalc):
-
-        #print "ncalc = "+str(ncalc)
-
-        if (dopol == 1):
-            column=i
 
         # Get pixel values in inner radius, converting to Jy/pix
-
         fd_jypix_inner = hmap[innerpix] * factor
 
         # sum up integrated flux in inner
-        #print "Total flux of the source aperture:"
         fd_jy_inner = np.sum(fd_jypix_inner)
-        #print str(fd_jy_inner)+" Jy "
 
         # same for outer radius but take a robust estimate and scale by area
-
         fd_jy_outer = np.median(hmap[bgpix]) * factor
-        #print "Robust (median) estimate of the background:"+str(fd_jy_outer)+" Jy/pix "
 
         # subtract background
-
         fd_bg        = fd_jy_outer
         fd_bg_scaled = fd_bg*float(ninnerpix)
         fd           = fd_jy_inner - fd_bg_scaled
 
-        #print "Scaled Background Level: "+str(fd_bg_scaled)+" Jy"
-        #print "Source Background ratio: "+str(fd_jy_inner/fd_bg_scaled)
-
-
-        #estimate error based on robust sigma of the background annulus
-        # new version (2-Dec-2010) that has been tested with simulations for
-        # Planck early paper and seems to be reasonable for many applications
-
         if (noise_model == 0):
-            #print "Usiing the background annuus stddev as the noise estimate"
+
             Npoints = (pix_area*ninnerpix) /  (1.13*(float(res_arcmin)/60. *np.pi/180.)**2)
             Npoints_outer = (pix_area*nbgpix) /  (1.13*(float(res_arcmin)/60. *np.pi/180.)**2)
             fd_err = np.std(hmap[bgpix]) * factor * ninnerpix / math.sqrt(Npoints)
-            #print "Noise level of the source: "+str(fd_err)+" Jy"
 
-
-        # works exactly for white uncorrelated noise only!
         if (noise_model == 1):
-            #print "Using the robust sigma (median absolute deviation) noise model"
+            #Robust sigma (median absolute deviation) noise model
+            # works exactly for white uncorrelated noise only!
+
             k = np.pi/2.
 
             fd_err = factor * math.sqrt(float(ninnerpix) + (k * float(ninnerpix)**2/nbgpix)) * mad_std(hmap[bgpix])
-                #astropy.stats's mad_std seems to have the same functionality as IDLastro's "Robust_Sigma"
-
-        # if dopol is set, then store the Q estimate the first time only
-        if(dopol == 1) and (i == 1):
-            fd1 = fd
-            fd_err1 = fd_err
-            fd_bg1 = fd_bg
 
 
 
-        # if dopol is set, combine Q and U to give PI
-    if (dopol == 1):
-        fd = math.sqrt(fd1**2 +fd**2)
-        fd_err = math.sqrt( 1./(fd1**2 + fd**2) * (fd1**2*fd_err1**2 + fd**2*fd_err** 2))
-        fd_bg = math.sqrt(fd_bg1**2 + fd_bg**2)
 
 
     return fd, fd_err, fd_bg_scaled
