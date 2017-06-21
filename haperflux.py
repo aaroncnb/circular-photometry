@@ -1,69 +1,7 @@
 
-# coding: utf-8
+#
+#
 
-#  Do aperture photometry on a Healpix map with a circle of a given
-#  radius, and subtracting the background in an annulus
-#  Units are assumed to be mK_RJ and are converted to Jy
-#
-#
-#  INPUTS
-#
-#  inmap               Healpix fits file or map array
-#                      If an array, it assumed to be 'RING' ordering
-#                      if ordering keyword not set
-#
-#  freq                Frequency (GHz) to allow conversion to Jy
-#
-#  res_arcmin          Angular resolution (arcmin FWHM) of the data
-#                      This is needed for the error estimation
-#                      and only needs to be approximate
-#                      ( for noise_model=1 only )
-#
-#
-#
-#  lon                 Longitude of aperture (deg)
-#
-#  lat                 Latitude of aperture (deg)
-#
-#  aper_inner_radius   Inner radius of aperture (arcmin)
-#
-#  aper_outer_radius1  1st Outer radius of aperture beteween aperture
-#                      and  b/g annulus (arcmin)
-#                      Make this the same as the inner radius for
-#                      single annulus with no gap
-#
-#  aper_outer_radius2  2nd Outer radius of aperture for b/g annulus (arcmin)
-#
-#  units               String defining units in the map
-#                      Options include ['K','K_RJ', 'K_CMB', 'MJy/sr','Jy/pixel']
-#                      m for milli and u for micro can also be used for
-#                      K e.g. 'mK_RJ' or 'mK'
-#                      Default is 'K_RJ'
-#
-#
-#  OPTIONAL:-
-#
-#  column              This can be set to any integer which represents
-#                      the column of the map (default is column=0)
-#
-#  dopol               If this keyword is set, then it will calculate the
-#                      polarized intensity from columns 1 and 2 (Q and
-#                      U) as PI=sqrt(Q^2+U^2) with *no noise bias* correction
-#                      N.B. This overrides the column option
-#
-#  nested              If set, then the ordering is NESTED
-#                      (default is to assume RING if not reading in a file)
-#
-#
-#  noise_model         Noise model for estimating the uncertainty
-#                      0 (DEFAULT) = approx uncertainty for typical/bg annulus aperture
-#                      sizes (only approximate!).
-#                      1 = assumes white uncorrelated noise (exact)
-#                      and will under-estimate in most cases with real backgrounds!
-#
-#  centroid	      reproject the source using gnomdrizz and uses the centroid of the source instead of input coordinates
-#                      0 (DEFAULT) = no centroiding is done
-#  		      1 = centroiding performed using IDL code cntrd
 #
 #  OUTPUTS
 #
@@ -74,31 +12,7 @@
 #
 #
 #  fd_bg               Background flux density estimate (Jy)
-#
-#
-#
-#  HISTORY
-#
-# 26-Jun-2010  C. Dickinson   1st go
-#  25-Jul-2010  C. Dickinson   Added conversion option from T_CMB->T_RJ
-#  25-Jul-2010  C. Dickinson   Added 2nd outer radius
-#  26-Aug-2010  C. Dickinson   Added generic 'unit' option
-#  02-Sep-2010  C. Dickinson   Tidied up the code a little
-#  19-Oct-2010  C. Dickinson   Use ang2vec rather than long way around
-#                              via the pixel number
-#  20-Oct-2010  M. Peel        Fix MJy/Sr conversion; add aliases for
-# 							  formats
-# 							  excluding
-# 							  underscores
-#
-#  10-Feb-2011  C. Dickinson   Added column option to allow polarization
-#  16-Feb-2011  C. Dickinson   Added /dopol keyword for doing polarized intensity
-#  12-Mar-2011  C. Dickinson   Added flexibility of reading in file or array
-#  01-Jun-2011  C. Dickinson   Added noise_model option
-#  10-Nov-2011  M. Peel        Adding AVG unit option.
-#  20-Sep-2012  P. McGehee     Ingested into IPAC SVN, formatting changes
-#  11-Apr-2016  A. Bell        Translated to Python
-# ----------------------------------------------------------
+
 
 """
 =====================================================
@@ -106,10 +20,16 @@ haperflux.py : Circular aperture photmetry
 =====================================================
 
 This module provides circular aperture photometry
-functionality for Healpix maps.
+functionality for Healpix maps. It is a Python
+implementation of the original IDL code written
+by Clive Dickinson, et al, available at:
+
+http://irsa.ipac.caltech.edu/data/Planck/release_1/software/
 
 - :func:'convertToJy' convert units to Janskys
 - :func:'planckcorr' conversion factor between CMB_K and Jy
+- :func:'haperflux' gets flux of a single aperture
+- :func:'haperfluxMany' gets fluxes over multiple regions and maps
 
 """
 
@@ -170,9 +90,41 @@ def convertToJy(units, thisfreq, npix):
 
     return factor
 
-def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_radius1, aper_outer_radius2, \
+def haperflux(inmap, freq, lon, lat, aper_inner_radius, aper_outer_radius1, aper_outer_radius2, \
               units, fd=0, fd_err=0, fd_bg=0, column=0, dopol=False, nested=False, noise_model=0, centroid=False, arcmin=True):
 
+    """ Do aperture photometry on a Healpix map with a circle of a given radius, and subtracting the background in an annulus
+    Units are converted to Jy.
+
+    Parameters
+    -----------
+    inmap : Healpix fits file or map array
+    freq : Frequency (GHz) to allow conversion to Jy
+    lon : Longitude of aperture (deg)
+    lat : Latitude of aperture (deg)
+    aper_inner_radius :   Inner radius of aperture (arcmin)
+    aper_outer_radius1 : 1st Outer radius of aperture beteween aperture
+        and  b/g annulus (arcmin) Make this the same as the inner radius for
+        single annulus with no gap.
+    aper_outer_radius2 : 2nd Outer radius of aperture for b/g annulus (arcmin)
+    units : String defining units in the map.
+        Options include ['K','K_RJ', 'K_CMB', 'MJy/sr','Jy/pixel']
+        m for milli and u for micro can also be used for
+        K e.g. 'mK_RJ' or 'mK'. Default is 'K_RJ'
+    nested : If set, then the ordering is NESTED
+        (default is to assume RING if not reading in a file)
+    noise_model : Noise model for estimating the uncertainty
+        0 (DEFAULT) = approx uncertainty for typical/bg annulus aperture
+        sizes (only approximate!).
+        1 = assumes white uncorrelated noise (exact)
+        and will under-estimate in most cases with real backgrounds!
+
+    Returns
+    --------
+    fd : Source flux density [Jy] (Background-subtracted)
+    fd_err : Noise level (det. from backgorund ring)
+    fd_bg : Background level
+    """
 
     #set parameters
     inmap = inmap
@@ -304,8 +256,24 @@ def haperflux(inmap, freq, lon, lat, res_arcmin, aper_inner_radius, aper_outer_r
 
 def haperfluxMany(inputlist, maplist, radius, rinner, router, galactic=True, decimal=True, noise_model=0):
 
-    #Gets aperture results for a list of sources accross a list of maps
-    ##  details about the different all-sky data sources which could be used here.
+    """
+    Gets aperture results for a list of sources accross a list of maps using 'haperflux'
+
+
+
+    Parameters
+    ----------
+
+    inputlist : File containing a list of paths of target coordinates
+    maplist :  File containing a list of paths to HEALPix maps to be used
+    radius : Radius of the source aperture in arcmin
+    rinner : Radius of the inner boundary of the background annulus
+    router : Radius of the outer boundary of the background annulus
+    galactic : 
+    """
+
+    ##  Names and frequencies of the sample maps included in this repo.
+
     freqlist =     ['30','44','70','100','143','217','353','545','857','1249','1874','2141','2998','3331','4612','4997','11992','16655','24983','24983','24983','33310']
     freqval =      [28.405889, 44.072241,70.421396,100.,143.,217.,353.,545.,857.,1249.,1874.,2141.,2141.,2998.,2998.,3331.,4612.,4997.,11992.,16655.,24983.,24983.,24983.,33310.]
     band_names =   ["akari9", "dirbe12","iras12","wise12","akari18","iras25","iras60","akari65","akari90","dirbe100","iras100","akari140","dirbe140","akari160","dirbe240","planck857", "planck545"]
