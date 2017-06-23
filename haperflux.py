@@ -223,19 +223,26 @@ def haperflux(inmap, freq, lon, lat, aper_inner_radius, aper_outer_radius1, aper
     fd           = fd_jy_inner - fd_bg_scaled
 
     if (noise_model == 0):
-        pix_area = 4.*np.pi / npix
 
-        Npoints = (pix_area*ninnerpix) /  (1.13*(float(res_arcmin)/60. *np.pi/180.)**2)
-        Npoints_outer = (pix_area*nbgpix) /  (1.13*(float(res_arcmin)/60. *np.pi/180.)**2)
-        fd_err = np.std(hmap[bgpix]) * factor * ninnerpix / math.sqrt(Npoints)
+        # pix_area = 4.*np.pi / npix
+        #
+        # Npoints = (pix_area*ninnerpix) /  (1.13*(float(aper_inner_radius)/60.*np.pi/180.)**2)
+        #
+        # Npoints_outer = (pix_area*nbgpix) /  (1.13*(float(aper_inner_radius)/60.*np.pi/180.)**2)
+
+        # fd_err = np.std(hmap[bgpix]) * factor * ninnerpix / math.sqrt(Npoints)
+
+        fd_err = np.std(hmap[bgpix]) * factor
 
     if (noise_model == 1):
 
         #Robust sigma (median absolute deviation) noise model
         # works exactly for white uncorrelated noise only!
-        k = np.pi/2.
+        #k = np.pi/2.
 
-        fd_err = factor * math.sqrt(float(ninnerpix) + (k * float(ninnerpix)**2/nbgpix)) * mad_std(hmap[bgpix])
+        # fd_err = factor * math.sqrt(float(ninnerpix) + (k * float(ninnerpix)**2/nbgpix)) * mad_std(hmap[bgpix])
+
+        fd_err = factor *  mad_std(hmap[bgpix])
 
     return fd, fd_err, fd_bg_scaled
 
@@ -255,7 +262,7 @@ def haperfluxMany(inputlist, maplist, radius, rinner, router, galactic=True, dec
     radius : Radius of the source aperture in arcmin
     rinner : Radius of the inner boundary of the background annulus
     router : Radius of the outer boundary of the background annulus
-    galactic : 
+    galactic :
     """
 
     ##  Names and frequencies of the sample maps included in this repo.
@@ -307,8 +314,7 @@ def haperfluxMany(inputlist, maplist, radius, rinner, router, galactic=True, dec
             glat = targets['glat'][ct]
 
             fd_all[ct,ct2], fd_err_all[ct,ct2], fd_bg_all[ct,ct2] = \
-                haperflux(inmap= xtmp_data, freq= currfreq, lon=glon, lat=glat, \
-                        res_arcmin= radius, aper_inner_radius=radius, aper_outer_radius1=rinner, \
+                haperflux(inmap= xtmp_data, freq= currfreq, lon=glon, lat=glat, aper_inner_radius=radius, aper_outer_radius1=rinner, \
                         aper_outer_radius2=router,units=units, noise_model=noise_model)
 
             if (np.isfinite(fd_err_all[ct,ct2]) == False):
