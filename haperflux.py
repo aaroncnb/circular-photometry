@@ -222,17 +222,19 @@ def haperflux(inmap, freq, lon, lat, aper_inner_radius, aper_outer_radius1, aper
     fd_bg_scaled = fd_bg*float(ninnerpix)
     fd           = fd_jy_inner - fd_bg_scaled
 
+    
+  
+    
     if (noise_model == 0):
 
-        # pix_area = 4.*np.pi / npix
-        #
-        # Npoints = (pix_area*ninnerpix) /  (1.13*(float(aper_inner_radius)/60.*np.pi/180.)**2)
-        #
-        # Npoints_outer = (pix_area*nbgpix) /  (1.13*(float(aper_inner_radius)/60.*np.pi/180.)**2)
+        pix_area = 4.*np.pi / npix
+        
+        Npoints = (pix_area*ninnerpix) /  (1.13*(float(aper_inner_radius)/60.*np.pi/180.)**2)
+        
+        Npoints_outer = (pix_area*nbgpix) /  (1.13*(float(aper_inner_radius)/60.*np.pi/180.)**2)
 
-        # fd_err = np.std(hmap[bgpix]) * factor * ninnerpix / math.sqrt(Npoints)
+        fd_err = np.std(hmap[bgpix]) * factor * ninnerpix / math.sqrt(Npoints)
 
-        fd_err = np.std(hmap[bgpix]) * factor
 
     if (noise_model == 1):
 
